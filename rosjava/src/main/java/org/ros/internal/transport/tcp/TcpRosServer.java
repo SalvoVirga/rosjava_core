@@ -20,17 +20,21 @@ import com.google.common.base.Preconditions;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.buffer.HeapChannelBufferFactory;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFactory;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 import org.ros.address.AdvertiseAddress;
 import org.ros.address.BindAddress;
 import org.ros.internal.node.service.ServiceManager;
 import org.ros.internal.node.topic.TopicParticipantManager;
+
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFactory;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.util.concurrent.GlobalEventExecutor;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteOrder;
@@ -75,20 +79,29 @@ public class TcpRosServer {
 
   public void start() {
     Preconditions.checkState(outgoingChannel == null);
-    channelFactory = new NioServerSocketChannelFactory(executorService, executorService);
-    bootstrap = new ServerBootstrap(channelFactory);
-    bootstrap.setOption("child.bufferFactory",
-        new HeapChannelBufferFactory(ByteOrder.LITTLE_ENDIAN));
-    bootstrap.setOption("child.keepAlive", true);
-    incomingChannelGroup = new DefaultChannelGroup();
-    bootstrap.setPipelineFactory(new TcpServerPipelineFactory(incomingChannelGroup,
-        topicParticipantManager, serviceManager));
+    
+    EventLoopGroup bossGroup = new NioEventLoopGroup();
+    EventLoopGroup workerGroup = new NioEventLoopGroup();
+    
+    //channelFactory = new NioServerSocketChannelFactory(executorService, executorService);
+    
+    bootstrap = new ServerBootstrap();
+    bootstrap.group(bossGroup, workerGroup)
+    bootstrap.channel(NioServerSocketChannel.class);
+    bootstrap.option(ChannelOption.SO_KEEPALIVE, true);
+    
+    //bootstrap.setOption("child.bufferFactory", new HeapChannelBufferFactory(ByteOrder.LITTLE_ENDIAN));
+    incomingChannelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
+    
+    
+    bootstrap.setPipelineFactory(new TcpServerPipelineFactory(incomingChannelGroup, topicParticipantManager, serviceManager));
 
-    outgoingChannel = bootstrap.bind(bindAddress.toInetSocketAddress());
+    // TODO: check this
+    outgoingChannel = (Channel) bootstrap.bind(bindAddress.toInetSocketAddress());
     advertiseAddress.setPortCallable(new Callable<Integer>() {
       @Override
       public Integer call() throws Exception {
-        return ((InetSocketAddress) outgoingChannel.getLocalAddress()).getPort();
+        return ((InetSocketAddress) outgoingChannel.localAddress();
       }
     });
     if (DEBUG) {

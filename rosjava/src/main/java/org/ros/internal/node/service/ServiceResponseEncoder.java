@@ -16,28 +16,23 @@
 
 package org.ros.internal.node.service;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.oneone.OneToOneEncoder;
-import org.ros.internal.message.MessageBuffers;
+import java.util.List;
+
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.MessageToMessageEncoder;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
  */
-public final class ServiceResponseEncoder extends OneToOneEncoder {
+public final class ServiceResponseEncoder extends MessageToMessageEncoder<Object> {
 
-  @Override
-  protected Object encode(ChannelHandlerContext ctx, Channel channel, Object msg) throws Exception {
-    if (msg instanceof ServiceServerResponse) {
-      ServiceServerResponse response = (ServiceServerResponse) msg;
-      ChannelBuffer buffer = MessageBuffers.dynamicBuffer();
-      buffer.writeByte(response.getErrorCode());
-      buffer.writeInt(response.getMessageLength());
-      buffer.writeBytes(response.getMessage());
-      return buffer;
-    } else {
-      return msg;
-    }
-  }
+	@Override
+	protected void encode(ChannelHandlerContext arg0, Object msg, List<Object> l) throws Exception {
+		if (msg instanceof ServiceServerResponse) {
+			ServiceServerResponse response = (ServiceServerResponse) msg;
+			l.add(response.getErrorCode());
+			l.add(response.getMessageLength());
+			l.add(response.getMessage());
+		}
+	}
 }

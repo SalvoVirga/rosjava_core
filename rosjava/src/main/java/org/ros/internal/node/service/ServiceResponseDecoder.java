@@ -16,50 +16,52 @@
 
 package org.ros.internal.node.service;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
+import java.util.List;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.ReplayingDecoder;
 
 /**
  * Decodes service responses.
  * 
  * @author damonkohler@google.com (Damon Kohler)
  */
-class ServiceResponseDecoder<ResponseType> extends
-    ReplayingDecoder<ServiceResponseDecoderState> {
+class ServiceResponseDecoder<ResponseType> extends ReplayingDecoder<ServiceResponseDecoderState> {
 
-  private ServiceServerResponse response;
+	private ServiceServerResponse response;
 
-  public ServiceResponseDecoder() {
-    reset();
-  }
+	public ServiceResponseDecoder() {
+		reset();
+	}
 
-  @SuppressWarnings("fallthrough")
-  @Override
-  protected Object decode(ChannelHandlerContext ctx, Channel channel, ChannelBuffer buffer,
-      ServiceResponseDecoderState state) throws Exception {
-    switch (state) {
-      case ERROR_CODE:
-        response.setErrorCode(buffer.readByte());
-        checkpoint(ServiceResponseDecoderState.MESSAGE_LENGTH);
-      case MESSAGE_LENGTH:
-        response.setMessageLength(buffer.readInt());
-        checkpoint(ServiceResponseDecoderState.MESSAGE);
-      case MESSAGE:
-        response.setMessage(buffer.readBytes(response.getMessageLength()));
-        try {
-          return response;
-        } finally {
-          reset();
-        }
-      default:
-        throw new IllegalStateException();
-    }
-  }
+	private void reset() {
+		checkpoint(ServiceResponseDecoderState.ERROR_CODE);
+		response = new ServiceServerResponse();
+	}
+	
+	public ServiceServerResponse getServiceResponse() {
+		return response;
+	}
 
-  private void reset() {
-    checkpoint(ServiceResponseDecoderState.ERROR_CODE);
-    response = new ServiceServerResponse();
-  }
+	// TODO: check this
+	@Override
+	protected void decode(ChannelHandlerContext arg0, ByteBuf buf, List<Object> out) throws Exception {
+		switch (state()) {
+		case ERROR_CODE:
+			response.setErrorCode(buf.readByte());
+			out.add(buf.readByte());
+			checkpoint(ServiceResponseDecoderState.MESSAGE_LENGTH);
+		case MESSAGE_LENGTH:
+			response.setMessageLength(buf.readInt());
+			out.add(buf.readInt());
+			checkpoint(ServiceResponseDecoderState.MESSAGE);
+		case MESSAGE:
+			response.setMessage(buf.readBytes(response.getMessageLength()));
+			out.add(buf.readBytes(response.getMessageLength()));
+			reset();
+		default:
+			throw new IllegalStateException();
+		}
+	}
 }
