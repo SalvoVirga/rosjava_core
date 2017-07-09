@@ -18,12 +18,11 @@ package org.ros.internal.transport;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.channel.group.ChannelGroup;
 import org.ros.exception.RosRuntimeException;
+
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.group.ChannelGroup;
 
 import java.io.IOException;
 import java.nio.channels.Channels;
@@ -33,52 +32,49 @@ import java.nio.channels.Channels;
  * 
  * @author damonkohler@google.com (Damon Kohler)
  */
-public class ConnectionTrackingHandler extends SimpleChannelHandler {
+public class ConnectionTrackingHandler extends ChannelDuplexHandler {
 
-  private static final boolean DEBUG = false;
-  private static final Log log = LogFactory.getLog(ConnectionTrackingHandler.class);
+	private static final boolean DEBUG = false;
+	private static final Log log = LogFactory.getLog(ConnectionTrackingHandler.class);
 
-  /**
-   * The channel group the connection is to be part of.
-   */
-  private final ChannelGroup channelGroup;
+	/**
+	 * The channel group the connection is to be part of.
+	 */
+	private final ChannelGroup channelGroup;
 
-  public ConnectionTrackingHandler(ChannelGroup channelGroup) {
-    this.channelGroup = channelGroup;
-  }
+	public ConnectionTrackingHandler(ChannelGroup channelGroup) {
+		this.channelGroup = channelGroup;
+	}
 
-  @Override
-  public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-    if (DEBUG) {
-      log.info("Channel opened: " + e.getChannel());
-    }
-    channelGroup.add(e.getChannel());
-    super.channelOpen(ctx, e);
-  }
+	@Override
+	public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+		if (DEBUG) {
+			log.info("Channel opened: " + ctx.channel());
+		}
+		channelGroup.add(ctx.channel());
+		super.channelRegistered(ctx);
+	}
 
-  @Override
-  public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-    if (DEBUG) {
-      log.info("Channel closed: " + e.getChannel());
-    }
-    super.channelClosed(ctx, e);
-  }
+	@Override
+	public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+		if (DEBUG) {
+			log.info("Channel closed: " + ctx.channel());
+		}
+		super.channelInactive(ctx);
+	}
 
-  @Override
-  public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-    ctx.getChannel().close();
-    if (e.getCause() instanceof IOException) {
-      // NOTE(damonkohler): We ignore exceptions here because they are common
-      // (e.g. network failure, connection reset by peer, shutting down, etc.)
-      // and should not be fatal. However, in all cases the channel should be
-      // closed.
-      if (DEBUG) {
-        log.error("Channel exception: " + ctx.getChannel(), e.getCause());
-      } else {
-        log.error("Channel exception: " + e.getCause());
-      }
-    } else {
-      throw new RosRuntimeException(e.getCause());
-    }
-  }
+	
+	@Override
+	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+		ctx.channel().close();
+		if (cause instanceof IOException) {
+			if (DEBUG) {
+				log.error("Channel exception: " + ctx.channel(), cause);
+			} else {
+				log.error("Channel exception: " + cause.getMessage());
+			}
+		} else {
+			throw new RosRuntimeException(cause);
+		}		
+	}
 }

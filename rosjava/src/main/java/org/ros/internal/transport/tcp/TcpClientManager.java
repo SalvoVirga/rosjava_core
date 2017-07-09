@@ -18,9 +18,9 @@ package org.ros.internal.transport.tcp;
 
 import com.google.common.collect.Lists;
 
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.util.concurrent.GlobalEventExecutor;
 
 import java.net.SocketAddress;
 import java.util.Collection;
@@ -39,7 +39,7 @@ public class TcpClientManager {
 
   public TcpClientManager(Executor executor) {
     this.executor = executor;
-    channelGroup = new DefaultChannelGroup();
+    channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     tcpClients = Lists.newArrayList();
     namedChannelHandlers = Lists.newArrayList();
   }
@@ -66,7 +66,11 @@ public class TcpClientManager {
   public TcpClient connect(String connectionName, SocketAddress socketAddress) {
     TcpClient tcpClient = new TcpClient(channelGroup, executor);
     tcpClient.addAllNamedChannelHandlers(namedChannelHandlers);
-    tcpClient.connect(connectionName, socketAddress);
+    try {
+		tcpClient.connect(connectionName, socketAddress);
+	} catch (InterruptedException e) {
+		e.printStackTrace();
+	}
     tcpClients.add(tcpClient);
     return tcpClient;
   }

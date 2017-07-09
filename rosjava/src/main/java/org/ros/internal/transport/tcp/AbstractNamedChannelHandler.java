@@ -16,12 +16,12 @@
 
 package org.ros.internal.transport.tcp;
 
-import org.jboss.netty.channel.SimpleChannelHandler;
+import io.netty.channel.ChannelDuplexHandler;
 
 /**
  * @author damonkohler@google.com (Damon Kohler)
  */
-public abstract class AbstractNamedChannelHandler extends SimpleChannelHandler implements
+public abstract class AbstractNamedChannelHandler extends ChannelDuplexHandler implements
     NamedChannelHandler {
 
   @Override

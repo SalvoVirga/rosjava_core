@@ -20,17 +20,19 @@ import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.group.ChannelGroupFuture;
-import org.jboss.netty.channel.group.ChannelGroupFutureListener;
-import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.ros.concurrent.CancellableLoop;
 import org.ros.concurrent.CircularBlockingDeque;
 import org.ros.internal.message.MessageBufferPool;
 import org.ros.internal.message.MessageBuffers;
 import org.ros.message.MessageSerializer;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.ChannelGroupFuture;
+import io.netty.channel.group.ChannelGroupFutureListener;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.util.concurrent.GlobalEventExecutor;
 
 import java.util.concurrent.ExecutorService;
 
@@ -49,7 +51,7 @@ public class OutgoingMessageQueue<T> {
   private final ChannelGroup channelGroup;
   private final Writer writer;
   private final MessageBufferPool messageBufferPool;
-  private final ChannelBuffer latchedBuffer;
+  private final ByteBuf latchedBuffer;
   private final Object mutex;
 
   private boolean latchMode;
@@ -59,7 +61,7 @@ public class OutgoingMessageQueue<T> {
     @Override
     public void loop() throws InterruptedException {
       T message = deque.takeFirst();
-      final ChannelBuffer buffer = messageBufferPool.acquire();
+      final ByteBuf buffer = messageBufferPool.acquire();
       serializer.serialize(message, buffer);
       if (DEBUG) {
         log.info(String.format("Writing %d bytes to %d channels.", buffer.readableBytes(),
@@ -81,7 +83,7 @@ public class OutgoingMessageQueue<T> {
   public OutgoingMessageQueue(MessageSerializer<T> serializer, ExecutorService executorService) {
     this.serializer = serializer;
     deque = new CircularBlockingDeque<T>(DEQUE_CAPACITY);
-    channelGroup = new DefaultChannelGroup();
+    channelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     writer = new Writer();
     messageBufferPool = new MessageBufferPool();
     latchedBuffer = MessageBuffers.dynamicBuffer();

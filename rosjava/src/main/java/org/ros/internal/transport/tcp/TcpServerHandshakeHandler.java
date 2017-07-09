@@ -16,16 +16,15 @@
 
 package org.ros.internal.transport.tcp;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
+
 import com.google.common.base.Preconditions;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelHandler;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
 import org.ros.exception.RosRuntimeException;
 import org.ros.internal.node.server.NodeIdentifier;
 import org.ros.internal.node.service.DefaultServiceServer;
@@ -45,68 +44,67 @@ import org.ros.namespace.GraphName;
  * @author damonkohler@google.com (Damon Kohler)
  * @author kwc@willowgarage.com (Ken Conley)
  */
-public class TcpServerHandshakeHandler extends SimpleChannelHandler {
+public class TcpServerHandshakeHandler extends ChannelDuplexHandler {
 
-  private final TopicParticipantManager topicParticipantManager;
-  private final ServiceManager serviceManager;
+	private final TopicParticipantManager topicParticipantManager;
+	private final ServiceManager serviceManager;
 
-  public TcpServerHandshakeHandler(TopicParticipantManager topicParticipantManager,
-      ServiceManager serviceManager) {
-    this.topicParticipantManager = topicParticipantManager;
-    this.serviceManager = serviceManager;
-  }
+	public TcpServerHandshakeHandler(TopicParticipantManager topicParticipantManager,
+			ServiceManager serviceManager) {
+		this.topicParticipantManager = topicParticipantManager;
+		this.serviceManager = serviceManager;
+	}
 
-  @Override
-  public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-    ChannelBuffer incomingBuffer = (ChannelBuffer) e.getMessage();
-    ChannelPipeline pipeline = e.getChannel().getPipeline();
-    ConnectionHeader incomingHeader = ConnectionHeader.decode(incomingBuffer);
-    if (incomingHeader.hasField(ConnectionHeaderFields.SERVICE)) {
-      handleServiceHandshake(e, pipeline, incomingHeader);
-    } else {
-      handleSubscriberHandshake(ctx, e, pipeline, incomingHeader);
-    }
-  }
+	@Override
+	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+		ByteBuf incomingBuffer = (ByteBuf) msg;
+		ChannelPipeline pipeline = ctx.channel().pipeline();
+		ConnectionHeader incomingHeader = ConnectionHeader.decode(incomingBuffer);
+		if (incomingHeader.hasField(ConnectionHeaderFields.SERVICE)) {
+			handleServiceHandshake(ctx, pipeline, incomingHeader);
+		} else {
+			handleSubscriberHandshake(ctx, pipeline, incomingHeader);
+		}
+	}
 
-  private void handleServiceHandshake(MessageEvent e, ChannelPipeline pipeline,
-      ConnectionHeader incomingHeader) {
-    GraphName serviceName = GraphName.of(incomingHeader.getField(ConnectionHeaderFields.SERVICE));
-    Preconditions.checkState(serviceManager.hasServer(serviceName));
-    DefaultServiceServer<?, ?> serviceServer = serviceManager.getServer(serviceName);
-    e.getChannel().write(serviceServer.finishHandshake(incomingHeader));
-    String probe = incomingHeader.getField(ConnectionHeaderFields.PROBE);
-    if (probe != null && probe.equals("1")) {
-      e.getChannel().close();
-    } else {
-      pipeline.replace(TcpServerPipelineFactory.LENGTH_FIELD_PREPENDER, "ServiceResponseEncoder",
-          new ServiceResponseEncoder());
-      pipeline.replace(this, "ServiceRequestHandler", serviceServer.newRequestHandler());
-    }
-  }
+	private void handleServiceHandshake(ChannelHandlerContext ctx, ChannelPipeline pipeline,
+			ConnectionHeader incomingHeader) {
+		GraphName serviceName = GraphName.of(incomingHeader.getField(ConnectionHeaderFields.SERVICE));
+		Preconditions.checkState(serviceManager.hasServer(serviceName));
+		DefaultServiceServer<?, ?> serviceServer = serviceManager.getServer(serviceName);
+		ctx.channel().write(serviceServer.finishHandshake(incomingHeader));
+		String probe = incomingHeader.getField(ConnectionHeaderFields.PROBE);
+		if (probe != null && probe.equals("1")) {
+			ctx.channel().close();
+		} else {
+			pipeline.replace(TcpServerPipelineFactory.LENGTH_FIELD_PREPENDER, "ServiceResponseEncoder",
+					new ServiceResponseEncoder());
+			pipeline.replace(this, "ServiceRequestHandler", serviceServer.newRequestHandler());
+		}
+	}
 
-  private void handleSubscriberHandshake(ChannelHandlerContext ctx, MessageEvent e,
-      ChannelPipeline pipeline, ConnectionHeader incomingConnectionHeader)
-      throws InterruptedException, Exception {
-    Preconditions.checkState(incomingConnectionHeader.hasField(ConnectionHeaderFields.TOPIC),
-        "Handshake header missing field: " + ConnectionHeaderFields.TOPIC);
-    GraphName topicName =
-        GraphName.of(incomingConnectionHeader.getField(ConnectionHeaderFields.TOPIC));
-    Preconditions.checkState(topicParticipantManager.hasPublisher(topicName),
-        "No publisher for topic: " + topicName);
-    DefaultPublisher<?> publisher = topicParticipantManager.getPublisher(topicName);
-    ChannelBuffer outgoingBuffer = publisher.finishHandshake(incomingConnectionHeader);
-    Channel channel = ctx.getChannel();
-    ChannelFuture future = channel.write(outgoingBuffer).await();
-    if (!future.isSuccess()) {
-      throw new RosRuntimeException(future.getCause());
-    }
-    String nodeName = incomingConnectionHeader.getField(ConnectionHeaderFields.CALLER_ID);
-    publisher.addSubscriber(new SubscriberIdentifier(NodeIdentifier.forName(nodeName),
-        new TopicIdentifier(topicName)), channel);
+	private void handleSubscriberHandshake(ChannelHandlerContext ctx, ChannelPipeline pipeline, ConnectionHeader incomingConnectionHeader)
+					throws InterruptedException, Exception {
+		Preconditions.checkState(incomingConnectionHeader.hasField(ConnectionHeaderFields.TOPIC),
+				"Handshake header missing field: " + ConnectionHeaderFields.TOPIC);
+		GraphName topicName =
+				GraphName.of(incomingConnectionHeader.getField(ConnectionHeaderFields.TOPIC));
+		Preconditions.checkState(topicParticipantManager.hasPublisher(topicName),
+				"No publisher for topic: " + topicName);
+		DefaultPublisher<?> publisher = topicParticipantManager.getPublisher(topicName);
+		ByteBuf outgoingBuffer = publisher.finishHandshake(incomingConnectionHeader);
+		Channel channel = ctx.channel();
+		ChannelFuture future = channel.write(outgoingBuffer).await();
+		if (!future.isSuccess()) {
+			throw new RosRuntimeException(future.cause());
+		}
+		String nodeName = incomingConnectionHeader.getField(ConnectionHeaderFields.CALLER_ID);
+		publisher.addSubscriber(new SubscriberIdentifier(NodeIdentifier.forName(nodeName),
+				new TopicIdentifier(topicName)), channel);
 
-    // Once the handshake is complete, there will be nothing incoming on the
-    // channel. So, we replace the handshake handler with a handler which will
-    // drop everything.
-    pipeline.replace(this, "DiscardHandler", new SimpleChannelHandler());
-  }
+		// Once the handshake is complete, there will be nothing incoming on the
+		// channel. So, we replace the handshake handler with a handler which will
+		// drop everything.
+		pipeline.replace(this, "DiscardHandler", new ChannelDuplexHandler());
+	}
 }
