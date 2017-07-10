@@ -32,7 +32,6 @@ import java.util.StringTokenizer;
 import org.apache.xmlrpc.server.XmlRpcStreamServer;
 import org.apache.xmlrpc.util.ThreadPool;
 
-
 /**
  * <p>The {@link WebServer} is a minimal HTTP server, that might be used
  * as an embedded web server.</p>
@@ -161,6 +160,9 @@ public class WebServer implements Runnable {
 	 */
 	protected ServerSocket createServerSocket(int pPort, int backlog, InetAddress addr)
 			throws IOException {
+		if (serverSocket != null) {
+			System.out.println("serverSocket not null at this point");
+		}
 		return new ServerSocket(pPort, backlog, addr);
 	}
 	
@@ -185,6 +187,7 @@ public class WebServer implements Runnable {
 				if (serverSocket.getSoTimeout() <= 0) {
 					serverSocket.setSoTimeout(4096);
 				}
+				serverSocket.setReuseAddress(true);
 				return;
 			} catch (BindException e) {
 				if (i == 10) {
@@ -356,6 +359,7 @@ public class WebServer implements Runnable {
 			if (serverSocket != null) {
 				try {
 					serverSocket.close();
+					serverSocket = null;
 				} catch (IOException e) {
 					log(e);
 				}
@@ -386,6 +390,14 @@ public class WebServer implements Runnable {
             if (pool != null) {
                 pool.shutdown();
             }
+		}
+		if (serverSocket != null) {
+			try {
+				serverSocket.close();
+			} catch (IOException e) {
+				log(e);
+			}
+			serverSocket = null;
 		}
 	}
 	

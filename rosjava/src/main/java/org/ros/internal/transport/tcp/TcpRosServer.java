@@ -109,6 +109,7 @@ public class TcpRosServer {
     }
     if (outgoingChannel != null) {
       outgoingChannel.close().awaitUninterruptibly();
+      outgoingChannel.unbind();
     }
     incomingChannelGroup.close().awaitUninterruptibly();
     // NOTE(damonkohler): We are purposely not calling
